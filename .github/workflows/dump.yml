@@ -20,7 +20,7 @@ on:
       compression:
         description: 'Compression level'
         required: true
-        default: '6'
+        default: '0'
         type: choice
         options:
         - '0'
@@ -30,55 +30,55 @@ on:
       extract_system:
         description: 'system.img'
         type: boolean
-        default: true
+        default: false
       extract_system_ext:
         description: 'system_ext.img'
         type: boolean
-        default: true
+        default: false
       extract_product:
         description: 'product.img'
         type: boolean
-        default: true
+        default: false
       extract_vendor:
         description: 'vendor.img'
         type: boolean
-        default: true
+        default: false
       extract_vendor_boot:
         description: 'vendor_boot.img'
         type: boolean
-        default: true
+        default: false
       extract_vendor_dlkm:
         description: 'vendor_dlkm.img'
         type: boolean
-        default: true
+        default: false
       extract_system_dlkm:
         description: 'system_dlkm.img'
         type: boolean
-        default: true
+        default: false
       extract_odm:
         description: 'odm.img'
         type: boolean
-        default: true
+        default: false
       extract_odm_dlkm:
         description: 'odm_dlkm.img'
         type: boolean
-        default: true
+        default: false
       extract_boot:
         description: 'boot.img'
         type: boolean
-        default: true
+        default: false
       extract_init_boot:
         description: 'init_boot.img'
         type: boolean
-        default: true
+        default: false
       extract_vbmeta:
         description: 'vbmeta.img'
         type: boolean
-        default: true
+        default: false
       extract_vbmeta_system:
         description: 'vbmeta_system.img'
         type: boolean
-        default: true
+        default: false
       extract_dtbo:
         description: 'dtbo.img'
         type: boolean
