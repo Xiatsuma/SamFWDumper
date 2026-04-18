@@ -1,0 +1,157 @@
+# ==============================================================================
+# Copyright (c) 2026 Xiatsuma. All Rights Reserved.
+#
+# LICENSE TERMS:
+# 1. Personal, non-commercial use is permitted.
+# 2. Commercial use, resale, or unauthorized distribution is STRICTLY PROHIBITED.
+# 3. Removal of this copyright notice is a violation of license.
+#
+# For permissions: https://github.com/Xiatsuma
+# ==============================================================================
+
+name: Firmware Dumper
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'SamFW Direct Download Link'
+        required: true
+      compression:
+        description: 'Compression level'
+        required: true
+        default: '6'
+        type: choice
+        options:
+        - '0'
+        - '3'
+        - '6'
+        - '9'
+      extract_system:
+        description: 'system.img'
+        type: boolean
+        default: true
+      extract_system_ext:
+        description: 'system_ext.img'
+        type: boolean
+        default: true
+      extract_product:
+        description: 'product.img'
+        type: boolean
+        default: true
+      extract_vendor:
+        description: 'vendor.img'
+        type: boolean
+        default: true
+      extract_vendor_boot:
+        description: 'vendor_boot.img'
+        type: boolean
+        default: true
+      extract_vendor_dlkm:
+        description: 'vendor_dlkm.img'
+        type: boolean
+        default: true
+      extract_system_dlkm:
+        description: 'system_dlkm.img'
+        type: boolean
+        default: true
+      extract_odm:
+        description: 'odm.img'
+        type: boolean
+        default: true
+      extract_odm_dlkm:
+        description: 'odm_dlkm.img'
+        type: boolean
+        default: true
+      extract_boot:
+        description: 'boot.img'
+        type: boolean
+        default: true
+      extract_init_boot:
+        description: 'init_boot.img'
+        type: boolean
+        default: true
+      extract_vbmeta:
+        description: 'vbmeta.img'
+        type: boolean
+        default: true
+      extract_vbmeta_system:
+        description: 'vbmeta_system.img'
+        type: boolean
+        default: true
+      extract_dtbo:
+        description: 'dtbo.img'
+        type: boolean
+        default: false
+      extract_recovery:
+        description: 'recovery.img'
+        type: boolean
+        default: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            jq \
+            xz-utils \
+            lz4 \
+            unzip \
+            curl \
+            android-sdk-libsparse-utils
+
+      - name: Make tools executable
+        run: chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* upload_gofile.sh scripts/dump.sh
+
+      - name: Run Dump Script
+        run: |
+          # Build partition list from checkboxes
+          PARTITIONS=""
+          ${{ github.event.inputs.extract_system }} && PARTITIONS="$PARTITIONS system"
+          ${{ github.event.inputs.extract_system_ext }} && PARTITIONS="$PARTITIONS system_ext"
+          ${{ github.event.inputs.extract_product }} && PARTITIONS="$PARTITIONS product"
+          ${{ github.event.inputs.extract_vendor }} && PARTITIONS="$PARTITIONS vendor"
+          ${{ github.event.inputs.extract_vendor_boot }} && PARTITIONS="$PARTITIONS vendor_boot"
+          ${{ github.event.inputs.extract_vendor_dlkm }} && PARTITIONS="$PARTITIONS vendor_dlkm"
+          ${{ github.event.inputs.extract_system_dlkm }} && PARTITIONS="$PARTITIONS system_dlkm"
+          ${{ github.event.inputs.extract_odm }} && PARTITIONS="$PARTITIONS odm"
+          ${{ github.event.inputs.extract_odm_dlkm }} && PARTITIONS="$PARTITIONS odm_dlkm"
+          ${{ github.event.inputs.extract_boot }} && PARTITIONS="$PARTITIONS boot"
+          ${{ github.event.inputs.extract_init_boot }} && PARTITIONS="$PARTITIONS init_boot"
+          ${{ github.event.inputs.extract_vbmeta }} && PARTITIONS="$PARTITIONS vbmeta"
+          ${{ github.event.inputs.extract_vbmeta_system }} && PARTITIONS="$PARTITIONS vbmeta_system"
+          ${{ github.event.inputs.extract_dtbo }} && PARTITIONS="$PARTITIONS dtbo"
+          ${{ github.event.inputs.extract_recovery }} && PARTITIONS="$PARTITIONS recovery"
+          
+          # Remove leading space
+          PARTITIONS="${PARTITIONS# }"
+          
+          if [ -z "$PARTITIONS" ]; then
+            echo "❌ No partitions selected! Please check at least one box."
+            exit 1
+          fi
+          
+          # Run script
+          bash scripts/dump.sh \
+            "${{ github.event.inputs.url }}" \
+            "${{ github.event.inputs.compression }}" \
+            "$PARTITIONS"
+
+      - name: Upload to GoFile
+        run: |
+          if [ -d "processed" ] && [ "$(ls -A processed)" ]; then
+            cd processed
+            zip -r ../firmware-dump.zip .
+            cd ..
+            bash upload_gofile.sh firmware-dump.zip
+          else
+            echo "❌ No files to upload"
+            exit 1
+          fi
+          
