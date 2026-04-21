@@ -1,12 +1,19 @@
-GNU GENERAL PUBLIC LICENSE v3.0 - ADDITIONAL TERMS
+PolyForm Noncommercial License 1.0.0
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
 Copyright (C) 2026 Xiatsuma
 
 This software is provided for personal, non-commercial use only.
-Commercial use, resale, distribution as part of proprietary software,
-or integration into paid services requires explicit written permission.
+You may use, modify, and distribute this software ONLY if:
+1. You keep this license file and all copyright notices intact
+2. You credit "Xiatsuma" as the original author in any copy or modification
+3. You do NOT use this software (or any derivative) for commercial purposes
+4. You do NOT remove, obscure, or alter any attribution or license terms
 
-Attribution to "Xiatsuma" must be retained in all copies and derivative works.
-Removal of copyright notices, license terms, or attribution is strictly prohibited.
+Commercial use, resale, integration into paid products, or distribution
+as part of proprietary software requires explicit written permission
+from the copyright holder.
 
-For commercial licensing inquiries, contact the repository owner via GitHub.
-Full license text: https://www.gnu.org/licenses/gpl-3.0.html
+For commercial licensing inquiries: Contact via GitHub @Xiatsuma
+
+NO WARRANTY. This software is provided "AS IS" without any guarantee.
