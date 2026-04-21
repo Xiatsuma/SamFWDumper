@@ -135,12 +135,10 @@ jobs:
 
           echo ""; echo "[5/6] Extracting system.img contents..."
           mkdir -p system_extracted
-          bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -o system_extracted/ 2>/dev/null || \
-          bin/erofs-utils/dump.erofs -i "$SYSTEM_IMG" -o system_extracted/ 2>/dev/null || \
-          { sudo mount -o loop,ro "$SYSTEM_IMG" system_extracted/ 2>/dev/null && echo "mounted via loop"; }
+          bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null || \
+          sudo mount -o loop,ro "$SYSTEM_IMG" system_extracted/ 2>/dev/null
           echo "✅ Extracted"
 
-          # Debug: show top level to understand structure
           echo "Top level contents:"
           ls system_extracted/ || true
           echo "Second level (if system/):"
@@ -149,7 +147,6 @@ jobs:
           echo ""; echo "[6/6] Copying selected targets..."
           mkdir -p output
           for TARGET in $TARGETS; do
-            # Try root level first, then system/, then system/system/
             for BASE in "system_extracted" "system_extracted/system" "system_extracted/system/system"; do
               SRC="$BASE/$TARGET"
               if [ -e "$SRC" ]; then
