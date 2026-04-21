@@ -89,12 +89,7 @@ jobs:
           ${{ github.event.inputs.extract_floating_features }} && TARGETS="$TARGETS floating_features.xml"
 
           TARGETS="${TARGETS# }"
-
-          if [ -z "$TARGETS" ]; then
-            echo "❌ No targets selected!"
-            exit 1
-          fi
-
+          [ -z "$TARGETS" ] && { echo "❌ No targets selected!"; exit 1; }
           echo "Targets: $TARGETS"
 
           echo ""; echo "[1/6] Downloading firmware..."
@@ -114,7 +109,7 @@ jobs:
           rm -f "$AP_FILE"
           echo "✅ Done"
 
-          echo ""; echo "[4/6] Extracting system.img from super..."
+          echo ""; echo "[4/6] Getting system.img..."
           SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" | head -n 1)
           if [ -n "$SUPER_FILE" ]; then
             if [[ "$SUPER_FILE" == *.lz4 ]]; then
@@ -131,42 +126,43 @@ jobs:
           else
             SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
             if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
-              lz4 -d "$SYSTEM_IMG" "system.img"
-              SYSTEM_IMG="system.img"
+              lz4 -d "$SYSTEM_IMG" "system_raw.img"
+              SYSTEM_IMG="system_raw.img"
             fi
           fi
-
           [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
           echo "✅ Found: $SYSTEM_IMG"
 
-          echo ""; echo "[5/6] Mounting system.img..."
-          mkdir -p system_mount
-          # Try erofs first, fallback to ext4
-          if bin/erofs-utils/fsck.erofs "$SYSTEM_IMG" >/dev/null 2>&1; then
-            bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -o system_mount/ >/dev/null 2>&1 || \
-            sudo mount -o loop,ro "$SYSTEM_IMG" system_mount/ 2>/dev/null
-          else
-            sudo mount -o loop,ro "$SYSTEM_IMG" system_mount/ 2>/dev/null || \
-            bin/ext4/ext2rd "$SYSTEM_IMG" -x system_mount/ 2>/dev/null
-          fi
-          echo "✅ Mounted"
+          echo ""; echo "[5/6] Extracting system.img contents..."
+          mkdir -p system_extracted
+          bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -o system_extracted/ 2>/dev/null || \
+          bin/erofs-utils/dump.erofs -i "$SYSTEM_IMG" -o system_extracted/ 2>/dev/null || \
+          { sudo mount -o loop,ro "$SYSTEM_IMG" system_extracted/ 2>/dev/null && echo "mounted via loop"; }
+          echo "✅ Extracted"
+
+          # Debug: show top level to understand structure
+          echo "Top level contents:"
+          ls system_extracted/ || true
+          echo "Second level (if system/):"
+          ls system_extracted/system/ 2>/dev/null || true
 
           echo ""; echo "[6/6] Copying selected targets..."
           mkdir -p output
           for TARGET in $TARGETS; do
-            SRC="system_mount/$TARGET"
-            # Also check inside system/system/ (some Samsung firmware double-nests)
-            [ ! -e "$SRC" ] && SRC="system_mount/system/$TARGET"
-            if [ -e "$SRC" ]; then
-              cp -r "$SRC" "output/"
-              echo "  ✅ $TARGET"
-            else
-              echo "  ⚠️ Not found: $TARGET"
-            fi
+            # Try root level first, then system/, then system/system/
+            for BASE in "system_extracted" "system_extracted/system" "system_extracted/system/system"; do
+              SRC="$BASE/$TARGET"
+              if [ -e "$SRC" ]; then
+                cp -r "$SRC" "output/"
+                echo "  ✅ $TARGET (from $BASE)"
+                break
+              fi
+            done
+            [ ! -e "output/$TARGET" ] && echo "  ⚠️ Not found: $TARGET"
           done
 
-          sudo umount system_mount/ 2>/dev/null || true
-          rm -rf system_mount super_dump super.img super.raw.img
+          sudo umount system_extracted/ 2>/dev/null || true
+          rm -rf system_extracted super_dump super.img super.raw.img
 
           FILE_COUNT=$(ls output | wc -l)
           [ "$FILE_COUNT" -eq 0 ] && { echo "❌ Nothing extracted!"; exit 1; }
