@@ -141,13 +141,16 @@ jobs:
 
           echo "Top level contents:"
           ls system_extracted/ || true
-          echo "Second level (if system/):"
-          ls system_extracted/system/ 2>/dev/null || true
 
           echo ""; echo "[6/6] Copying selected targets..."
           mkdir -p output
           for TARGET in $TARGETS; do
-            for BASE in "system_extracted" "system_extracted/system" "system_extracted/system/system"; do
+            for BASE in \
+              "system_extracted" \
+              "system_extracted/system" \
+              "system_extracted/system_a" \
+              "system_extracted/system/system" \
+              "system_extracted/system_a/system"; do
               SRC="$BASE/$TARGET"
               if [ -e "$SRC" ]; then
                 cp -r "$SRC" "output/"
