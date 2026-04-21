@@ -63,6 +63,20 @@ This project relies on several open-source tools:
 
 Upload integration via [GoFile API](https://gofile.io/api) and inspired by [Sushrut1101/GoFile-Upload](https://github.com/Sushrut1101/GoFile-Upload).
 
+## 🤝 Credits
+
+<p align="center">
+  <a href="https://github.com/DevCat3" target="_blank">
+    <img src="https://img.shields.io/badge/✨_DevCat3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="DevCat3">
+  </a>
+  <a href="https://github.com/QOS3" target="_blank">
+    <img src="https://img.shields.io/badge/✨_QOS3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="QOS3">
+  </a>
+  <a href="https://github.com/xenoZ0x" target="_blank">
+    <img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x">
+  </a>
+</p>
+
 ---
 
 Copyright © 2026 Xiatsuma. All rights reserved.
