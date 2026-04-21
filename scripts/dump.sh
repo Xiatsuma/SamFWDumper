@@ -1,14 +1,14 @@
 #!/bin/bash
-# ==============================================================================
-# Copyright (c) 2026 Xiatsuma. All Rights Reserved.
+# =============================================================================
+# SamFWDumper - Automated Samsung Firmware Extraction
+# Copyright (C) 2026 Xiatsuma
+# Licensed under PolyForm Noncommercial License 1.0.0
+# https://polyformproject.org/licenses/noncommercial/1.0.0
 #
-# LICENSE TERMS:
-# 1. Personal, non-commercial use is permitted.
-# 2. Commercial use, resale, or unauthorized distribution is STRICTLY PROHIBITED.
-# 3. Removal of this copyright notice is a violation of license.
-#
-# For permissions: https://github.com/Xiatsuma
-# ==============================================================================
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
+# =============================================================================
 set -e
 
 echo "═══════════════════════════════════════"
