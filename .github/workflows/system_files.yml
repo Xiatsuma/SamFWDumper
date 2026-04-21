@@ -132,7 +132,6 @@ jobs:
               lz4 -d "$SYSTEM_IMG" "system_raw.img"
               SYSTEM_IMG="system_raw.img"
             fi
-            # Handle sparse ext4
             if file "$SYSTEM_IMG" | grep -q "sparse"; then
               echo "  Converting sparse ext4..."
               simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
@@ -145,22 +144,46 @@ jobs:
           echo ""; echo "[5/6] Extracting system.img contents..."
           mkdir -p system_extracted
 
-          # Try erofs first
+          # Single file targets (use debugfs dump, not rdump)
+          SINGLE_FILES="build.prop floating_features.xml"
+
           if bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null; then
             echo "✅ Extracted via erofs"
           else
             echo "  erofs failed — trying ext4 via debugfs..."
-            # Use debugfs to extract targets directly from ext4
-            mkdir -p system_extracted
             for TARGET in $TARGETS; do
               echo "  Extracting $TARGET via debugfs..."
-              # Try root level first, then /system/ prefix
-              for SRC_PATH in "$TARGET" "system/$TARGET"; do
-                if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
-                  mkdir -p "system_extracted/$TARGET"
-                  debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null && break
-                fi
+              IS_FILE=false
+              for SF in $SINGLE_FILES; do
+                [ "$TARGET" = "$SF" ] && IS_FILE=true && break
               done
+
+              if $IS_FILE; then
+                # Single file — try multiple paths
+                FOUND=false
+                for SRC_PATH in "$TARGET" "system/$TARGET"; do
+                  if debugfs -R "stat $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+                    debugfs -R "dump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
+                    FOUND=true
+                    echo "  ✅ $TARGET found at /$SRC_PATH"
+                    break
+                  fi
+                done
+                $FOUND || echo "  ⚠️ $TARGET not found in image"
+              else
+                # Directory — use rdump
+                FOUND=false
+                for SRC_PATH in "$TARGET" "system/$TARGET"; do
+                  if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+                    mkdir -p "system_extracted/$TARGET"
+                    debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
+                    FOUND=true
+                    echo "  ✅ $TARGET found at /$SRC_PATH"
+                    break
+                  fi
+                done
+                $FOUND || echo "  ⚠️ $TARGET not found in image"
+              fi
             done
             echo "✅ Extracted via debugfs"
           fi
@@ -171,15 +194,12 @@ jobs:
           echo ""; echo "[6/6] Copying selected targets..."
           mkdir -p output
           for TARGET in $TARGETS; do
-            # If debugfs extracted directly into system_extracted/TARGET, use it
-            if [ -e "system_extracted/$TARGET" ] && [ "$(ls -A system_extracted/$TARGET 2>/dev/null)" ]; then
+            if [ -e "system_extracted/$TARGET" ]; then
               cp -r "system_extracted/$TARGET" "output/"
               echo "  ✅ $TARGET (direct)"
               continue
             fi
-            # Otherwise search nested paths (erofs A/B devices)
             for BASE in \
-              "system_extracted" \
               "system_extracted/system" \
               "system_extracted/system_a" \
               "system_extracted/system/system" \
