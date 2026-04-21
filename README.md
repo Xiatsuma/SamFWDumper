@@ -45,9 +45,21 @@ system, system_ext, product, vendor, vendor_boot, vendor_dlkm, system_dlkm, odm,
 | `cameradata` | Camera tuning data |
 | `build.prop` | Device properties and fingerprint |
 
-## Terms of Use
+## ⚖️ License & Terms
 
-This tool is for personal, non-commercial use only. You must credit **Xiatsuma** in any copies or modifications. Commercial use, resale, or distribution in proprietary products requires explicit written permission.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+
+✅ **You may:**
+- Use this tool for personal, non-commercial purposes.
+- Modify the code for your own use.
+- Share the original or modified version — **provided** you keep this license intact.
+
+❌ **You may not:**
+- Use this tool (or any derivative) for commercial purposes.
+- Remove or alter copyright notices, license terms, or attribution to **Xiatsuma**.
+- Distribute as part of a proprietary/closed-source product.
+
+📩 For commercial licensing inquiries, contact the repository owner via GitHub.
 
 ## Built With
 
