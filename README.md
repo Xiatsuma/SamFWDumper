@@ -47,7 +47,7 @@ system, system_ext, product, vendor, vendor_boot, vendor_dlkm, system_dlkm, odm,
 
 ## Terms of Use
 
-This tool is for personal, non-commercial use only. You must credit **Xiatsuma** in any copies or modifications. Commercial use, resale, or distribution in proprietary products requires explicit written permission.
+This project is licensed under **MIT License**, please check LICENSE files for more info.
 
 ## Built With
 
