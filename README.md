@@ -1,4 +1,4 @@
-![Banner](IMG_20260421_042029_488.png)
+![Banner](banner.png)
 
 # SamFWDumper
 
