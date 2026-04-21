@@ -70,7 +70,8 @@ jobs:
             lz4 \
             unzip \
             curl \
-            android-sdk-libsparse-utils
+            android-sdk-libsparse-utils \
+            e2fsprogs
 
       - name: Make tools executable
         run: chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* upload_gofile.sh scripts/dump.sh
@@ -112,6 +113,7 @@ jobs:
           echo ""; echo "[4/6] Getting system.img..."
           SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" | head -n 1)
           if [ -n "$SUPER_FILE" ]; then
+            echo "  Found super.img — dynamic partition device"
             if [[ "$SUPER_FILE" == *.lz4 ]]; then
               lz4 -d "$SUPER_FILE" "super.img"
               SUPER_FILE="super.img"
@@ -124,10 +126,17 @@ jobs:
             bin/lp/lpunpack "$SUPER_FILE" super_dump
             SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
           else
+            echo "  No super.img — legacy device"
             SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
             if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
               lz4 -d "$SYSTEM_IMG" "system_raw.img"
               SYSTEM_IMG="system_raw.img"
+            fi
+            # Handle sparse ext4
+            if file "$SYSTEM_IMG" | grep -q "sparse"; then
+              echo "  Converting sparse ext4..."
+              simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
+              SYSTEM_IMG="system_unsparse.img"
             fi
           fi
           [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
@@ -135,9 +144,26 @@ jobs:
 
           echo ""; echo "[5/6] Extracting system.img contents..."
           mkdir -p system_extracted
-          bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null || \
-          sudo mount -o loop,ro "$SYSTEM_IMG" system_extracted/ 2>/dev/null
-          echo "✅ Extracted"
+
+          # Try erofs first
+          if bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null; then
+            echo "✅ Extracted via erofs"
+          else
+            echo "  erofs failed — trying ext4 via debugfs..."
+            # Use debugfs to extract targets directly from ext4
+            mkdir -p system_extracted
+            for TARGET in $TARGETS; do
+              echo "  Extracting $TARGET via debugfs..."
+              # Try root level first, then /system/ prefix
+              for SRC_PATH in "$TARGET" "system/$TARGET"; do
+                if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+                  mkdir -p "system_extracted/$TARGET"
+                  debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null && break
+                fi
+              done
+            done
+            echo "✅ Extracted via debugfs"
+          fi
 
           echo "Top level contents:"
           ls system_extracted/ || true
@@ -145,6 +171,13 @@ jobs:
           echo ""; echo "[6/6] Copying selected targets..."
           mkdir -p output
           for TARGET in $TARGETS; do
+            # If debugfs extracted directly into system_extracted/TARGET, use it
+            if [ -e "system_extracted/$TARGET" ] && [ "$(ls -A system_extracted/$TARGET 2>/dev/null)" ]; then
+              cp -r "system_extracted/$TARGET" "output/"
+              echo "  ✅ $TARGET (direct)"
+              continue
+            fi
+            # Otherwise search nested paths (erofs A/B devices)
             for BASE in \
               "system_extracted" \
               "system_extracted/system" \
@@ -162,7 +195,7 @@ jobs:
           done
 
           sudo umount system_extracted/ 2>/dev/null || true
-          rm -rf system_extracted super_dump super.img super.raw.img
+          rm -rf system_extracted super_dump super.img super.raw.img system_unsparse.img
 
           FILE_COUNT=$(ls output | wc -l)
           [ "$FILE_COUNT" -eq 0 ] && { echo "❌ Nothing extracted!"; exit 1; }
