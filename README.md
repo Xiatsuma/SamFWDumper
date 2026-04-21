@@ -1,4 +1,4 @@
-![Banner](banner.png)
+![Banner](IMG_20260421_042029_488.png)
 
 # SamFWDumper
 
@@ -6,10 +6,17 @@ Automated Samsung firmware extraction powered by GitHub Actions. Download partit
 
 ## Get Started
 
+### Firmware Dumper
 1. Go to **Actions** → **Firmware Dumper** → **Run workflow**
 2. Paste your SamFW download link
 3. Choose compression level and select partitions
 4. Run the workflow and receive your download link with MD5 checksum
+
+### System Files Extractor
+1. Go to **Actions** → **System Files Extractor** → **Run workflow**
+2. Paste your SamFW download link
+3. Select the files or folders you need from system
+4. Run the workflow and receive your download link
 
 ## What It Does
 
@@ -23,6 +30,20 @@ Automated Samsung firmware extraction powered by GitHub Actions. Download partit
 ## Available Partitions
 
 system, system_ext, product, vendor, vendor_boot, vendor_dlkm, system_dlkm, odm, odm_dlkm, boot, init_boot, vbmeta, vbmeta_system, dtbo, recovery
+
+## Available System Files & Folders
+
+| Target | Description |
+|---|---|
+| `app` | Preinstalled APKs |
+| `priv-app` | Privileged system APKs |
+| `etc` | System configs and permissions |
+| `config` | XML feature and permission configs |
+| `lib` | Native libraries (32-bit) |
+| `lib64` | Native libraries (64-bit) |
+| `media` | Sounds, fonts, and bootanimation |
+| `cameradata` | Camera tuning data |
+| `build.prop` | Device properties and fingerprint |
 
 ## Terms of Use
 
