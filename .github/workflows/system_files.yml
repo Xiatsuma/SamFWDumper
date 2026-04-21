@@ -29,6 +29,10 @@ on:
         description: 'etc (Configs & permissions)'
         type: boolean
         default: false
+      extract_config:
+        description: 'config (XML feature & permission configs)'
+        type: boolean
+        default: false
       extract_lib:
         description: 'lib (32-bit libraries)'
         type: boolean
@@ -47,10 +51,6 @@ on:
         default: false
       extract_build_prop:
         description: 'build.prop (Device properties)'
-        type: boolean
-        default: false
-      extract_floating_features:
-        description: 'floating_features.xml (Samsung feature flags)'
         type: boolean
         default: false
 
@@ -81,12 +81,12 @@ jobs:
           ${{ github.event.inputs.extract_app }} && TARGETS="$TARGETS app"
           ${{ github.event.inputs.extract_priv_app }} && TARGETS="$TARGETS priv-app"
           ${{ github.event.inputs.extract_etc }} && TARGETS="$TARGETS etc"
+          ${{ github.event.inputs.extract_config }} && TARGETS="$TARGETS config"
           ${{ github.event.inputs.extract_lib }} && TARGETS="$TARGETS lib"
           ${{ github.event.inputs.extract_lib64 }} && TARGETS="$TARGETS lib64"
           ${{ github.event.inputs.extract_media }} && TARGETS="$TARGETS media"
           ${{ github.event.inputs.extract_cameradata }} && TARGETS="$TARGETS cameradata"
           ${{ github.event.inputs.extract_build_prop }} && TARGETS="$TARGETS build.prop"
-          ${{ github.event.inputs.extract_floating_features }} && TARGETS="$TARGETS floating_features.xml"
 
           TARGETS="${TARGETS# }"
           [ -z "$TARGETS" ] && { echo "❌ No targets selected!"; exit 1; }
