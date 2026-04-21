@@ -1,3 +1,5 @@
+![Banner](banner.png)
+
 # SamFWDumper
 
 Automated Samsung firmware extraction powered by GitHub Actions. Download partitions from SamFW links with verified, secure delivery.
