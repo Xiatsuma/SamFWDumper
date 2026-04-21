@@ -9,7 +9,7 @@
 # For permissions: https://github.com/Xiatsuma
 # ==============================================================================
 
-name: Firmware Dumper
+name: Images Extractor
 
 on:
   workflow_dispatch:
