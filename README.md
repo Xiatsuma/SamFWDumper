@@ -34,7 +34,7 @@ system, system_ext, product, vendor, vendor_boot, vendor_dlkm, system_dlkm, odm,
 ## Available System Files & Folders
 
 | Target | Description |
-|---|---|
+|--------|-------------|
 | `app` | Preinstalled APKs |
 | `priv-app` | Privileged system APKs |
 | `etc` | System configs and permissions |
@@ -75,19 +75,13 @@ This project relies on several open-source tools:
 
 Upload integration via [GoFile API](https://gofile.io/api) and inspired by [Sushrut1101/GoFile-Upload](https://github.com/Sushrut1101/GoFile-Upload).
 
-## 🤝 Credits
+## Acknowledgments
 
-<p align="center">
-  <a href="https://github.com/DevCat3" target="_blank">
-    <img src="https://img.shields.io/badge/✨_DevCat3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="DevCat3">
-  </a>
-  <a href="https://github.com/QOS3" target="_blank">
-    <img src="https://img.shields.io/badge/✨_QOS3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="QOS3">
-  </a>
-  <a href="https://github.com/xenoZ0x" target="_blank">
-    <img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x">
-  </a>
-</p>
+Special thanks to the following contributors for their valuable input and support:
+
+- [DevCat3](https://github.com/DevCat3)
+- [QOS3](https://github.com/QOS3)
+- [xenoZ0x](https://github.com/xenoZ0x)
 
 ---
 
