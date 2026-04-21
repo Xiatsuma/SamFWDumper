@@ -17,6 +17,10 @@ on:
       url:
         description: 'SamFW Direct Download Link'
         required: true
+      extract_super_config:
+        description: 'super config (Repack metadata for super.img)'
+        type: boolean
+        default: false
       extract_app:
         description: 'app (Preinstalled APKs)'
         type: boolean
@@ -90,8 +94,17 @@ jobs:
           ${{ github.event.inputs.extract_build_prop }} && TARGETS="$TARGETS build.prop"
 
           TARGETS="${TARGETS# }"
-          [ -z "$TARGETS" ] && { echo "❌ No targets selected!"; exit 1; }
+
+          WANT_SUPER_CONFIG="${{ github.event.inputs.extract_super_config }}"
+
+          # At least one must be selected
+          if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ]; then
+            echo "❌ No targets selected!"
+            exit 1
+          fi
+
           echo "Targets: $TARGETS"
+          echo "Super config: $WANT_SUPER_CONFIG"
 
           echo ""; echo "[1/6] Downloading firmware..."
           wget --no-check-certificate -O "firmware.zip" "${{ github.event.inputs.url }}" 2>&1 | tail -3
@@ -124,9 +137,33 @@ jobs:
             fi
             mkdir -p super_dump
             bin/lp/lpunpack "$SUPER_FILE" super_dump
+
+            # Save super config if requested
+            if [ "$WANT_SUPER_CONFIG" = "true" ]; then
+              mkdir -p output
+              if [ -d "super_dump/configs" ]; then
+                cp -r "super_dump/configs" "output/super_config"
+                echo "✅ super config saved from super_dump/configs"
+              elif [ -d "super_dump/config" ]; then
+                cp -r "super_dump/config" "output/super_config"
+                echo "✅ super config saved from super_dump/config"
+              else
+                # lpunpack on some versions outputs config files directly
+                mkdir -p "output/super_config"
+                find super_dump -maxdepth 1 -name "*.cfg" -o -name "*_partition*" -o -name "misc_info*" | \
+                  xargs -I{} cp {} "output/super_config/" 2>/dev/null
+                # Also save lpunpack metadata via lpdump
+                bin/lp/lpdump "$SUPER_FILE" > "output/super_config/lpdump.txt" 2>/dev/null || true
+                echo "✅ super config saved via lpdump"
+              fi
+            fi
+
             SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
           else
-            echo "  No super.img — legacy device"
+            echo "  No super.img — legacy device (super config not available)"
+            if [ "$WANT_SUPER_CONFIG" = "true" ]; then
+              echo "  ⚠️ super config requested but this is a legacy device with no super.img"
+            fi
             SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
             if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
               lz4 -d "$SYSTEM_IMG" "system_raw.img"
@@ -138,81 +175,83 @@ jobs:
               SYSTEM_IMG="system_unsparse.img"
             fi
           fi
-          [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
-          echo "✅ Found: $SYSTEM_IMG"
 
-          echo ""; echo "[5/6] Extracting system.img contents..."
-          mkdir -p system_extracted
-
-          # Single file targets (use debugfs dump, not rdump)
-          SINGLE_FILES="build.prop floating_features.xml"
-
-          if bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null; then
-            echo "✅ Extracted via erofs"
+          # If only super config was requested and no system targets, skip system extraction
+          if [ -z "$TARGETS" ]; then
+            echo "  No system targets — skipping system extraction"
           else
-            echo "  erofs failed — trying ext4 via debugfs..."
-            for TARGET in $TARGETS; do
-              echo "  Extracting $TARGET via debugfs..."
-              IS_FILE=false
-              for SF in $SINGLE_FILES; do
-                [ "$TARGET" = "$SF" ] && IS_FILE=true && break
+            [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
+            echo "✅ Found: $SYSTEM_IMG"
+
+            echo ""; echo "[5/6] Extracting system.img contents..."
+            mkdir -p system_extracted
+
+            SINGLE_FILES="build.prop floating_features.xml"
+
+            if bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null; then
+              echo "✅ Extracted via erofs"
+            else
+              echo "  erofs failed — trying ext4 via debugfs..."
+              for TARGET in $TARGETS; do
+                echo "  Extracting $TARGET via debugfs..."
+                IS_FILE=false
+                for SF in $SINGLE_FILES; do
+                  [ "$TARGET" = "$SF" ] && IS_FILE=true && break
+                done
+                if $IS_FILE; then
+                  FOUND=false
+                  for SRC_PATH in "$TARGET" "system/$TARGET"; do
+                    if debugfs -R "stat $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+                      debugfs -R "dump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
+                      FOUND=true
+                      echo "  ✅ $TARGET found at /$SRC_PATH"
+                      break
+                    fi
+                  done
+                  $FOUND || echo "  ⚠️ $TARGET not found in image"
+                else
+                  FOUND=false
+                  for SRC_PATH in "$TARGET" "system/$TARGET"; do
+                    if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+                      mkdir -p "system_extracted/$TARGET"
+                      debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
+                      FOUND=true
+                      echo "  ✅ $TARGET found at /$SRC_PATH"
+                      break
+                    fi
+                  done
+                  $FOUND || echo "  ⚠️ $TARGET not found in image"
+                fi
               done
-
-              if $IS_FILE; then
-                # Single file — try multiple paths
-                FOUND=false
-                for SRC_PATH in "$TARGET" "system/$TARGET"; do
-                  if debugfs -R "stat $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
-                    debugfs -R "dump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
-                    FOUND=true
-                    echo "  ✅ $TARGET found at /$SRC_PATH"
-                    break
-                  fi
-                done
-                $FOUND || echo "  ⚠️ $TARGET not found in image"
-              else
-                # Directory — use rdump
-                FOUND=false
-                for SRC_PATH in "$TARGET" "system/$TARGET"; do
-                  if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
-                    mkdir -p "system_extracted/$TARGET"
-                    debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
-                    FOUND=true
-                    echo "  ✅ $TARGET found at /$SRC_PATH"
-                    break
-                  fi
-                done
-                $FOUND || echo "  ⚠️ $TARGET not found in image"
-              fi
-            done
-            echo "✅ Extracted via debugfs"
-          fi
-
-          echo "Top level contents:"
-          ls system_extracted/ || true
-
-          echo ""; echo "[6/6] Copying selected targets..."
-          mkdir -p output
-          for TARGET in $TARGETS; do
-            if [ -e "system_extracted/$TARGET" ]; then
-              cp -r "system_extracted/$TARGET" "output/"
-              echo "  ✅ $TARGET (direct)"
-              continue
+              echo "✅ Extracted via debugfs"
             fi
-            for BASE in \
-              "system_extracted/system" \
-              "system_extracted/system_a" \
-              "system_extracted/system/system" \
-              "system_extracted/system_a/system"; do
-              SRC="$BASE/$TARGET"
-              if [ -e "$SRC" ]; then
-                cp -r "$SRC" "output/"
-                echo "  ✅ $TARGET (from $BASE)"
-                break
+
+            echo "Top level contents:"
+            ls system_extracted/ || true
+
+            echo ""; echo "[6/6] Copying selected targets..."
+            mkdir -p output
+            for TARGET in $TARGETS; do
+              if [ -e "system_extracted/$TARGET" ]; then
+                cp -r "system_extracted/$TARGET" "output/"
+                echo "  ✅ $TARGET (direct)"
+                continue
               fi
+              for BASE in \
+                "system_extracted/system" \
+                "system_extracted/system_a" \
+                "system_extracted/system/system" \
+                "system_extracted/system_a/system"; do
+                SRC="$BASE/$TARGET"
+                if [ -e "$SRC" ]; then
+                  cp -r "$SRC" "output/"
+                  echo "  ✅ $TARGET (from $BASE)"
+                  break
+                fi
+              done
+              [ ! -e "output/$TARGET" ] && echo "  ⚠️ Not found: $TARGET"
             done
-            [ ! -e "output/$TARGET" ] && echo "  ⚠️ Not found: $TARGET"
-          done
+          fi
 
           sudo umount system_extracted/ 2>/dev/null || true
           rm -rf system_extracted super_dump super.img super.raw.img system_unsparse.img
