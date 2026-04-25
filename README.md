@@ -73,7 +73,8 @@ This project relies on several open-source tools:
 - [xz](https://github.com/tukaani-project/xz) (LGPL-2.1/GPL-2.0) — Compression library
 - [lz4](https://github.com/lz4/lz4) (BSD-2-Clause) — Fast compression
 
-Upload integration via [GoFile API](https://gofile.io/api) and inspired by [Sushrut1101/GoFile-Upload](https://github.com/Sushrut1101/GoFile-Upload).
+Upload integration via [GoFile API](https://gofile.io/api) and inspired by [Sushrut1101/GoFile-Upload](https://github.com/Sushrut1101/GoFile-Upload).  
+Firmware sourced from [SamFW](https://samfw.com) — third-party Samsung firmware download platform.
 
 ## 🤝🏻 Credits
 
@@ -86,6 +87,9 @@ Upload integration via [GoFile API](https://gofile.io/api) and inspired by [Sush
   </a>
   <a href="https://github.com/xenoZ0x" target="_blank">
     <img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x">
+  </a>
+  <a href="https://samfw.com" target="_blank">
+    <img src="https://img.shields.io/badge/🌐_SamFW-Firmware_Source-181717?style=for-the-badge&labelColor=1428A0" alt="SamFW">
   </a>
 </p>
 
