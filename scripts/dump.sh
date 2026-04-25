@@ -36,6 +36,17 @@ echo "Partitions to extract: $SELECTED_PARTITIONS"
 
 chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* 2>/dev/null || true
 
+SUPER_PARTS="system system_ext product vendor vendor_dlkm system_dlkm odm odm_dlkm"
+NEED_SUPER=false
+for PART in $SELECTED_PARTITIONS; do
+  for SP in $SUPER_PARTS; do
+    if [ "$PART" = "$SP" ]; then
+      NEED_SUPER=true
+      break 2
+    fi
+  done
+done
+
 echo ""; echo "[1/5] Downloading..."
 wget --no-check-certificate -O "firmware.zip" "$URL" 2>&1 | tail -3
 [ ! -f "firmware.zip" ] && { echo "❌ Download failed"; exit 1; }
@@ -52,7 +63,14 @@ echo ""; echo "[3/5] Extracting AP..."
 AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
 [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
 echo "  Extracting: $(basename "$AP_FILE")"
-tar -xf "$AP_FILE" >/dev/null 2>&1
+
+EXTRACT_ARGS=()
+for PART in $SELECTED_PARTITIONS; do
+  EXTRACT_ARGS+=("*${PART}.img*" "*${PART}_a.img*" "*${PART}_b.img*")
+done
+$NEED_SUPER && EXTRACT_ARGS+=("*super.img*")
+
+tar --no-anchored --wildcards -xf "$AP_FILE" "${EXTRACT_ARGS[@]}" 2>/dev/null || tar -xf "$AP_FILE" >/dev/null 2>&1
 rm -f "$AP_FILE"
 echo "✅ Done"
 
@@ -90,7 +108,7 @@ done
 
 # Extract super.img partitions (ONLY selected ones)
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" | head -n 1)
-if [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
+if $NEED_SUPER && [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
   echo ""; echo "  Extracting super.img..."
   
   # Decompress LZ4
@@ -145,7 +163,7 @@ if [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
   done
   
   rm -rf super_dump super.img super.raw.img
-else
+elif $NEED_SUPER; then
   echo "  ⚠️ super.img not found"
 fi
 
