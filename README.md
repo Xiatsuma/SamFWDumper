@@ -86,13 +86,13 @@ Firmware sourced from [SamFW](https://samfw.com) — third-party Samsung firmwar
 ---
 
 <a href="https://github.com/DevCat3" target="_blank"><img src="https://img.shields.io/badge/✨_DevCat3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="DevCat3"></a><br>
-<sub>For his hands-on contributions to the scripts and the inspiration that shaped the soul of this project. A real one. 🙌</sub>
+<sub>For his hands-on contributions to the scripts and the inspiration that shaped the soul of this project. A real one. 🐈</sub>
 
 <a href="https://github.com/QOS3" target="_blank"><img src="https://img.shields.io/badge/✨_QOS3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="QOS3"></a><br>
 <sub>For being our كطري. 🇶🇦</sub>
 
 <a href="https://github.com/xenoZ0x" target="_blank"><img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x"></a><br>
-<sub>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🐱</sub>
+<sub>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🥑</sub>
 
 </div>
 
