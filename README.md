@@ -78,41 +78,27 @@ Firmware sourced from [SamFW](https://samfw.com) — third-party Samsung firmwar
 
 ## 🤝🏻 Credits
 
-<table align="center" border="0" cellspacing="0" cellpadding="8">
-  <tr>
-    <td align="center">
-      <a href="https://samfw.com" target="_blank">
-        <img src="https://img.shields.io/badge/🌐_SamFW-Firmware_Source-181717?style=for-the-badge&labelColor=1428A0" alt="SamFW">
-      </a>
-      <br><small>The platform that makes firmware accessible to everyone. The backbone this project stands on.</small>
-    </td>
-  </tr>
-  <tr><td align="center"><hr></td></tr>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/DevCat3" target="_blank">
-        <img src="https://img.shields.io/badge/✨_DevCat3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="DevCat3">
-      </a>
-      <br><small>For his hands-on contributions to the scripts and the inspiration that shaped the soul of this project. A real one. 🙌</small>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/QOS3" target="_blank">
-        <img src="https://img.shields.io/badge/✨_QOS3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="QOS3">
-      </a>
-      <br><small>For being our كطري. 🇶🇦</small>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/xenoZ0x" target="_blank">
-        <img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x">
-      </a>
-      <br><small>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🫡</small>
-    </td>
-  </tr>
-</table>
+<div align="center">
+
+<a href="https://samfw.com" target="_blank"><img src="https://img.shields.io/badge/🌐_SamFW-Firmware_Source-181717?style=for-the-badge&labelColor=1428A0" alt="SamFW"></a>
+
+<sub>The platform that makes firmware accessible to everyone. The backbone this project stands on.</sub>
+
+---
+
+<a href="https://github.com/DevCat3" target="_blank"><img src="https://img.shields.io/badge/✨_DevCat3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="DevCat3"></a>
+
+<sub>For his hands-on contributions to the scripts and the inspiration that shaped the soul of this project. A real one. 🙌</sub>
+
+<a href="https://github.com/QOS3" target="_blank"><img src="https://img.shields.io/badge/✨_QOS3-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="QOS3"></a>
+
+<sub>For being our كطري. 🇶🇦</sub>
+
+<a href="https://github.com/xenoZ0x" target="_blank"><img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x"></a>
+
+<sub>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🫡</sub>
+
+</div>
 
 ---
 
