@@ -92,7 +92,7 @@ Firmware sourced from [SamFW](https://samfw.com) — third-party Samsung firmwar
 <sub>For being our كطري. 🇶🇦</sub>
 
 <a href="https://github.com/xenoZ0x" target="_blank"><img src="https://img.shields.io/badge/✨_xenoZ0x-181717?style=for-the-badge&logo=github&logoColor=white&labelColor=0D1117" alt="xenoZ0x"></a><br>
-<sub>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🫡</sub>
+<sub>For the extraordinary commitment of being alive. Truly, the bare minimum — and somehow it's enough. We see you. 🐱</sub>
 
 </div>
 
