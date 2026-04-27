@@ -17,8 +17,40 @@ on:
       url:
         description: 'SamFW Direct Download Link'
         required: true
+      upload_destination:
+        description: 'Upload destination'
+        required: true
+        default: 'gofile'
+        type: choice
+        options:
+        - 'gofile'
+        - 'github releases'
+      from_system:
+        description: 'Extract from: system'
+        type: boolean
+        default: true
+      from_vendor:
+        description: 'Extract from: vendor'
+        type: boolean
+        default: false
+      from_product:
+        description: 'Extract from: product'
+        type: boolean
+        default: false
+      from_system_ext:
+        description: 'Extract from: system_ext'
+        type: boolean
+        default: false
+      from_odm:
+        description: 'Extract from: odm'
+        type: boolean
+        default: false
       extract_super_config:
         description: 'super config (Repack metadata for super.img)'
+        type: boolean
+        default: false
+      extract_apex:
+        description: 'apex'
         type: boolean
         default: false
       extract_app:
@@ -35,6 +67,10 @@ on:
         default: false
       extract_config:
         description: 'config (XML feature & permission configs)'
+        type: boolean
+        default: false
+      extract_framework:
+        description: 'framework'
         type: boolean
         default: false
       extract_lib:
@@ -61,6 +97,8 @@ on:
 jobs:
   extract:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -74,59 +112,95 @@ jobs:
             lz4 \
             unzip \
             curl \
+            binutils \
             android-sdk-libsparse-utils \
             e2fsprogs
 
       - name: Make tools executable
         run: chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* upload_gofile.sh scripts/dump.sh
 
-      - name: Build target list and extract
+      - name: Get AP Info
+        id: apinfo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          curl -sL --range 0-2097151 "${{ github.event.inputs.url }}" > /tmp/fw_peek.bin
+          AP_FILE=$(strings /tmp/fw_peek.bin | grep -oP 'AP_\w+\.(tar\.md5|tar)' | head -1)
+          rm -f /tmp/fw_peek.bin
+          AP_SEGMENT=$(echo "$AP_FILE" | cut -d'_' -f2)
+          RELEASE_DATE=$(date +"%-d-%-m-%Y %-I:%M %p")
+          BASE_TAG=$(date +"%d%m%Y_%H,%M,%S")
+          RELEASE_TAG="$BASE_TAG"
+          if gh release view "$RELEASE_TAG" &>/dev/null 2>&1; then
+            SUFFIX=1
+            while gh release view "${BASE_TAG}_${SUFFIX}" &>/dev/null 2>&1; do
+              SUFFIX=$((SUFFIX + 1))
+            done
+            RELEASE_TAG="${BASE_TAG}_${SUFFIX}"
+          fi
+          echo "ap_segment=$AP_SEGMENT" >> $GITHUB_OUTPUT
+          echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Extract firmware and partition files
+        run: |
+          PARTS=""
+          ${{ github.event.inputs.from_system }} && PARTS="$PARTS system"
+          ${{ github.event.inputs.from_vendor }} && PARTS="$PARTS vendor"
+          ${{ github.event.inputs.from_product }} && PARTS="$PARTS product"
+          ${{ github.event.inputs.from_system_ext }} && PARTS="$PARTS system_ext"
+          ${{ github.event.inputs.from_odm }} && PARTS="$PARTS odm"
+          PARTS="${PARTS# }"
+
           TARGETS=""
+          ${{ github.event.inputs.extract_apex }} && TARGETS="$TARGETS apex"
           ${{ github.event.inputs.extract_app }} && TARGETS="$TARGETS app"
           ${{ github.event.inputs.extract_priv_app }} && TARGETS="$TARGETS priv-app"
           ${{ github.event.inputs.extract_etc }} && TARGETS="$TARGETS etc"
           ${{ github.event.inputs.extract_config }} && TARGETS="$TARGETS config"
+          ${{ github.event.inputs.extract_configs }} && TARGETS="$TARGETS configs"
+          ${{ github.event.inputs.extract_framework }} && TARGETS="$TARGETS framework"
           ${{ github.event.inputs.extract_lib }} && TARGETS="$TARGETS lib"
           ${{ github.event.inputs.extract_lib64 }} && TARGETS="$TARGETS lib64"
           ${{ github.event.inputs.extract_media }} && TARGETS="$TARGETS media"
           ${{ github.event.inputs.extract_cameradata }} && TARGETS="$TARGETS cameradata"
           ${{ github.event.inputs.extract_build_prop }} && TARGETS="$TARGETS build.prop"
-
           TARGETS="${TARGETS# }"
 
           WANT_SUPER_CONFIG="${{ github.event.inputs.extract_super_config }}"
 
-          # At least one must be selected
+          if [ -z "$PARTS" ] && [ "$WANT_SUPER_CONFIG" != "true" ]; then
+            echo "❌ No partitions selected!"
+            exit 1
+          fi
+
           if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ]; then
             echo "❌ No targets selected!"
             exit 1
           fi
 
-          echo "Targets: $TARGETS"
-          echo "Super config: $WANT_SUPER_CONFIG"
-
-          echo ""; echo "[1/6] Downloading firmware..."
+          echo ""; echo "[1/5] Downloading firmware..."
           wget --no-check-certificate -O "firmware.zip" "${{ github.event.inputs.url }}" 2>&1 | tail -3
           [ ! -f "firmware.zip" ] && { echo "❌ Download failed"; exit 1; }
           echo "✅ Downloaded"
 
-          echo ""; echo "[2/6] Extracting ZIP..."
+          echo ""; echo "[2/5] Extracting ZIP..."
           unzip -o "firmware.zip" >/dev/null 2>&1
           rm -f "firmware.zip"
           echo "✅ Done"
 
-          echo ""; echo "[3/6] Extracting AP..."
+          echo ""; echo "[3/5] Extracting AP..."
           AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
           [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
-          tar -xf "$AP_FILE" >/dev/null 2>&1
+          tar --no-anchored --wildcards -xf "$AP_FILE" "*super.img*" 2>/dev/null || tar -xf "$AP_FILE" >/dev/null 2>&1
           rm -f "$AP_FILE"
           echo "✅ Done"
 
-          echo ""; echo "[4/6] Getting system.img..."
-          SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
-          if [ -n "$SUPER_FILE" ]; then
-            echo "  Found super.img — dynamic partition device"
+          echo ""; echo "[4/5] Preparing super.img..."
+          SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" | head -n 1)
+          IS_LEGACY=false
+
+          if [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
             if [[ "$SUPER_FILE" == *.lz4 ]]; then
               lz4 -d "$SUPER_FILE" "super.img"
               SUPER_FILE="super.img"
@@ -138,132 +212,160 @@ jobs:
             mkdir -p super_dump
             bin/lp/lpunpack "$SUPER_FILE" super_dump
 
-            # Save super config if requested
             if [ "$WANT_SUPER_CONFIG" = "true" ]; then
-              mkdir -p output
-              if [ -d "super_dump/configs" ]; then
-                cp -r "super_dump/configs" "output/super_config"
-                echo "✅ super config saved from super_dump/configs"
-              elif [ -d "super_dump/config" ]; then
-                cp -r "super_dump/config" "output/super_config"
-                echo "✅ super config saved from super_dump/config"
-              else
-                # lpunpack on some versions outputs config files directly
-                mkdir -p "output/super_config"
-                find super_dump -maxdepth 1 -name "*.cfg" -o -name "*_partition*" -o -name "misc_info*" | \
-                  xargs -I{} cp {} "output/super_config/" 2>/dev/null
-                # Also save lpunpack metadata via lpdump
-                bin/lp/lpdump "$SUPER_FILE" > "output/super_config/lpdump.txt" 2>/dev/null || true
-                echo "✅ super config saved via lpdump"
-              fi
+              mkdir -p output/super_config
+              bin/lp/lpdump "$SUPER_FILE" > "output/super_config/lpdump.txt" 2>/dev/null || true
+              find super_dump -maxdepth 1 \( -name "*.cfg" -o -name "*_partition*" -o -name "misc_info*" \) \
+                -exec cp {} "output/super_config/" \; 2>/dev/null
+              echo "✅ super config saved"
             fi
-
-            SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
           else
-            echo "  No super.img — legacy device (super config not available)"
-            if [ "$WANT_SUPER_CONFIG" = "true" ]; then
-              echo "  ⚠️ super config requested but this is a legacy device with no super.img"
-            fi
-            SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
-            if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
-              lz4 -d "$SYSTEM_IMG" "system_raw.img"
-              SYSTEM_IMG="system_raw.img"
-            fi
-            if file "$SYSTEM_IMG" | grep -q "sparse"; then
-              echo "  Converting sparse ext4..."
-              simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
-              SYSTEM_IMG="system_unsparse.img"
-            fi
+            echo "  No super.img — legacy device"
+            IS_LEGACY=true
           fi
 
-          # If only super config was requested and no system targets, skip system extraction
-          if [ -z "$TARGETS" ]; then
-            echo "  No system targets — skipping system extraction"
-          else
-            [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
-            echo "✅ Found: $SYSTEM_IMG"
+          echo ""; echo "[5/5] Extracting partition contents..."
+          mkdir -p output
 
-            echo ""; echo "[5/6] Extracting system.img contents..."
-            mkdir -p system_extracted
+          for PART in $PARTS; do
+            echo ""; echo "  ── Partition: $PART ──"
+            PART_IMG=""
 
-            SINGLE_FILES="build.prop floating_features.xml"
-
-            if bin/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ 2>/dev/null; then
-              echo "✅ Extracted via erofs"
-            else
-              echo "  erofs failed — trying ext4 via debugfs..."
-              for TARGET in $TARGETS; do
-                echo "  Extracting $TARGET via debugfs..."
-                IS_FILE=false
-                for SF in $SINGLE_FILES; do
-                  [ "$TARGET" = "$SF" ] && IS_FILE=true && break
-                done
-                if $IS_FILE; then
-                  FOUND=false
-                  for SRC_PATH in "$TARGET" "system/$TARGET"; do
-                    if debugfs -R "stat $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
-                      debugfs -R "dump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
-                      FOUND=true
-                      echo "  ✅ $TARGET found at /$SRC_PATH"
-                      break
-                    fi
-                  done
-                  $FOUND || echo "  ⚠️ $TARGET not found in image"
-                else
-                  FOUND=false
-                  for SRC_PATH in "$TARGET" "system/$TARGET"; do
-                    if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
-                      mkdir -p "system_extracted/$TARGET"
-                      debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
-                      FOUND=true
-                      echo "  ✅ $TARGET found at /$SRC_PATH"
-                      break
-                    fi
-                  done
-                  $FOUND || echo "  ⚠️ $TARGET not found in image"
-                fi
-              done
-              echo "✅ Extracted via debugfs"
-            fi
-
-            echo "Top level contents:"
-            ls system_extracted/ || true
-
-            echo ""; echo "[6/6] Copying selected targets..."
-            mkdir -p output
-            for TARGET in $TARGETS; do
-              if [ -e "system_extracted/$TARGET" ]; then
-                cp -r "system_extracted/$TARGET" "output/"
-                echo "  ✅ $TARGET (direct)"
+            if $IS_LEGACY; then
+              if [ "$PART" != "system" ]; then
+                echo "  ⚠️ Legacy device — only system available, skipping $PART"
                 continue
               fi
-              for BASE in \
-                "system_extracted/system" \
-                "system_extracted/system_a" \
-                "system_extracted/system/system" \
-                "system_extracted/system_a/system"; do
-                SRC="$BASE/$TARGET"
-                if [ -e "$SRC" ]; then
-                  cp -r "$SRC" "output/"
-                  echo "  ✅ $TARGET (from $BASE)"
-                  break
+              PART_IMG=$(find . -maxdepth 1 \( -name "${PART}.img.lz4" -o -name "${PART}.img" \) | head -n 1)
+              if [[ "$PART_IMG" == *.lz4 ]]; then
+                lz4 -d "$PART_IMG" "${PART}.img"
+                PART_IMG="${PART}.img"
+              fi
+              if file "$PART_IMG" | grep -q "sparse"; then
+                simg2img "$PART_IMG" "${PART}_raw.img" 2>/dev/null
+                PART_IMG="${PART}_raw.img"
+              fi
+            else
+              PART_IMG=$(find super_dump -name "${PART}.img" -o -name "${PART}_a.img" | head -n 1)
+            fi
+
+            [ -z "$PART_IMG" ] && { echo "  ⚠️ ${PART}.img not found — skipping"; continue; }
+            echo "  Found: $PART_IMG"
+
+            EXTRACT_DIR="extracted_${PART}"
+            mkdir -p "$EXTRACT_DIR"
+
+            if bin/erofs-utils/extract.erofs -i "$PART_IMG" -x -o "$EXTRACT_DIR/" 2>/dev/null; then
+              echo "  ✅ Extracted via erofs"
+            else
+              echo "  erofs failed — trying debugfs..."
+              for TARGET in $TARGETS; do
+                IS_FILE=false
+                [ "$TARGET" = "build.prop" ] && IS_FILE=true
+                if $IS_FILE; then
+                  for SRC_PATH in "$TARGET" "${PART}/$TARGET"; do
+                    if debugfs -R "stat $SRC_PATH" "$PART_IMG" 2>/dev/null | grep -q "Type: regular"; then
+                      debugfs -R "dump $SRC_PATH $EXTRACT_DIR/$TARGET" "$PART_IMG" 2>/dev/null
+                      echo "  ✅ $TARGET extracted via debugfs"
+                      break
+                    fi
+                  done
+                else
+                  for SRC_PATH in "$TARGET" "${PART}/$TARGET"; do
+                    if debugfs -R "ls $SRC_PATH" "$PART_IMG" 2>/dev/null | grep -q .; then
+                      mkdir -p "$EXTRACT_DIR/$TARGET"
+                      debugfs -R "rdump $SRC_PATH $EXTRACT_DIR/$TARGET" "$PART_IMG" 2>/dev/null
+                      echo "  ✅ $TARGET extracted via debugfs"
+                      break
+                    fi
+                  done
                 fi
               done
-              [ ! -e "output/$TARGET" ] && echo "  ⚠️ Not found: $TARGET"
-            done
-          fi
+            fi
 
-          sudo umount system_extracted/ 2>/dev/null || true
-          rm -rf system_extracted super_dump super.img super.raw.img system_unsparse.img
+            PART_ROOT="$EXTRACT_DIR"
+            if [ -d "$EXTRACT_DIR/$PART" ]; then
+              PART_ROOT="$EXTRACT_DIR/$PART"
+            elif [ -d "$EXTRACT_DIR/${PART}_a" ]; then
+              PART_ROOT="$EXTRACT_DIR/${PART}_a"
+            fi
+
+            echo "  Contents of $PART_ROOT:"
+            ls "$PART_ROOT/" || true
+
+            for TARGET in $TARGETS; do
+              SRC="$PART_ROOT/$TARGET"
+              if [ ! -e "$SRC" ]; then
+                echo "  ⚠️ $TARGET not found in $PART"
+                continue
+              fi
+              if [ -f "$SRC" ]; then
+                xz -0 -T0 -c "$SRC" > "output/${PART}_${TARGET}.xz"
+                echo "  ✅ ${PART}_${TARGET}.xz"
+              else
+                tar -cJf "output/${PART}_${TARGET}.tar.xz" -C "$PART_ROOT" "$TARGET"
+                echo "  ✅ ${PART}_${TARGET}.tar.xz"
+              fi
+            done
+
+            rm -rf "$EXTRACT_DIR"
+          done
+
+          rm -rf super_dump super.img super.raw.img
 
           FILE_COUNT=$(ls output | wc -l)
           [ "$FILE_COUNT" -eq 0 ] && { echo "❌ Nothing extracted!"; exit 1; }
-          echo "✅ Extracted $FILE_COUNT items"
+          echo ""; echo "✅ Extracted $FILE_COUNT items:"
+          ls -lh output/
 
       - name: Upload to GoFile
+        if: ${{ github.event.inputs.upload_destination == 'gofile' }}
         run: |
-          cd output
-          zip -r ../system-files.zip .
-          cd ..
-          bash upload_gofile.sh system-files.zip
-          
+          if [ -d "output" ] && [ "$(ls -A output)" ]; then
+            cd output
+            zip -r ../system-files.zip .
+            cd ..
+            bash upload_gofile.sh system-files.zip
+          else
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+      - name: Upload to GitHub Releases
+        if: ${{ github.event.inputs.upload_destination == 'github releases' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -d "output" ] || [ -z "$(ls -A output)" ]; then
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+          NOTES_FILE=$(mktemp)
+          ASSETS=()
+          SIZE_LIMIT=2147483648
+
+          for FILE in output/*; do
+            [ -f "$FILE" ] || continue
+            FILESIZE=$(stat -c%s "$FILE")
+            BASENAME=$(basename "$FILE")
+            PART_NAME=$(echo "$BASENAME" | sed 's/\.tar\.xz$//' | sed 's/\.xz$//')
+
+            if [ "$FILESIZE" -gt "$SIZE_LIMIT" ]; then
+              if bash upload_gofile.sh "$FILE"; then
+                GOFILE_URL=$(cat download_url.txt)
+                echo "${PART_NAME}: ${GOFILE_URL}" >> "$NOTES_FILE"
+              else
+                echo "${PART_NAME}: ❌ GoFile upload failed" >> "$NOTES_FILE"
+              fi
+            else
+              ASSETS+=("$FILE")
+            fi
+          done
+
+          gh release create "${{ steps.apinfo.outputs.release_tag }}" \
+            --title "${{ steps.apinfo.outputs.ap_segment }} | ${{ steps.apinfo.outputs.release_date }}" \
+            --notes-file "$NOTES_FILE" \
+            "${ASSETS[@]}"
+
+          rm -f "$NOTES_FILE"
