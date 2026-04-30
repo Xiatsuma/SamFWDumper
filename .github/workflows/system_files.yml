@@ -61,6 +61,10 @@ on:
         description: 'wallpaper-res.apk (Wallpaper resources APK from priv-app)'
         type: boolean
         default: false
+      extract_framework_rro:
+        description: 'framework-res RRO APK (from product/overlay)'
+        type: boolean
+        default: false
 
 jobs:
   extract:
@@ -101,9 +105,10 @@ jobs:
 
           WANT_SUPER_CONFIG="${{ github.event.inputs.extract_super_config }}"
           WANT_WALLPAPER_RES="${{ github.event.inputs.extract_wallpaper_res }}"
+          WANT_FRAMEWORK_RRO="${{ github.event.inputs.extract_framework_rro }}"
 
           # At least one must be selected
-          if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
+          if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ] && [ "$WANT_WALLPAPER_RES" != "true" ] && [ "$WANT_FRAMEWORK_RRO" != "true" ]; then
             echo "❌ No targets selected!"
             exit 1
           fi
@@ -111,25 +116,26 @@ jobs:
           echo "Targets: $TARGETS"
           echo "Super config: $WANT_SUPER_CONFIG"
           echo "Wallpaper-res APK: $WANT_WALLPAPER_RES"
+          echo "Framework RRO APK: $WANT_FRAMEWORK_RRO"
 
-          echo ""; echo "[1/6] Downloading firmware..."
+          echo ""; echo "[1/7] Downloading firmware..."
           wget --no-check-certificate -O "firmware.zip" "${{ github.event.inputs.url }}" 2>&1 | tail -3
           [ ! -f "firmware.zip" ] && { echo "❌ Download failed"; exit 1; }
           echo "✅ Downloaded"
 
-          echo ""; echo "[2/6] Extracting ZIP..."
+          echo ""; echo "[2/7] Extracting ZIP..."
           unzip -o "firmware.zip" >/dev/null 2>&1
           rm -f "firmware.zip"
           echo "✅ Done"
 
-          echo ""; echo "[3/6] Extracting AP..."
+          echo ""; echo "[3/7] Extracting AP..."
           AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
           [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
           tar -xf "$AP_FILE" >/dev/null 2>&1
           rm -f "$AP_FILE"
           echo "✅ Done"
 
-          echo ""; echo "[4/6] Getting system.img..."
+          echo ""; echo "[4/7] Getting system.img and product.img..."
           SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
           if [ -n "$SUPER_FILE" ]; then
             echo "  Found super.img — dynamic partition device"
@@ -163,6 +169,7 @@ jobs:
             fi
 
             SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
+            PRODUCT_IMG=$(find super_dump -name "product.img" -o -name "product_a.img" | head -n 1)
           else
             echo "  No super.img — legacy device (super config not available)"
             if [ "$WANT_SUPER_CONFIG" = "true" ]; then
@@ -174,20 +181,77 @@ jobs:
               SYSTEM_IMG="system_raw.img"
             fi
             if file "$SYSTEM_IMG" | grep -q "sparse"; then
-              echo "  Converting sparse ext4..."
+              echo "  Converting sparse system ext4..."
               simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
               SYSTEM_IMG="system_unsparse.img"
             fi
+            PRODUCT_IMG=$(find . -maxdepth 1 -name "product.img.lz4" -o -name "product.img" | head -n 1)
+            if [[ "$PRODUCT_IMG" == *.lz4 ]]; then
+              lz4 -d "$PRODUCT_IMG" "product_raw.img"
+              PRODUCT_IMG="product_raw.img"
+            fi
+            if [ -n "$PRODUCT_IMG" ] && file "$PRODUCT_IMG" | grep -q "sparse"; then
+              echo "  Converting sparse product ext4..."
+              simg2img "$PRODUCT_IMG" "product_unsparse.img" 2>/dev/null
+              PRODUCT_IMG="product_unsparse.img"
+            fi
           fi
 
-          # If only super config was requested and no system targets or wallpaper-res, skip system extraction
+          mkdir -p output
+
+          # ── product.img extraction (framework RRO APK) ──────────────────────
+          if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
+            echo ""; echo "[5/7] Extracting framework RRO APK from product.img..."
+            if [ -z "$PRODUCT_IMG" ] || [ ! -f "$PRODUCT_IMG" ]; then
+              echo "  ⚠️ product.img not found — cannot extract framework RRO APK"
+            else
+              echo "  Found: $PRODUCT_IMG"
+              mkdir -p product_extracted
+              RRO_FOUND=false
+
+              if bin/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ 2>/dev/null; then
+                echo "  ✅ product.img extracted via erofs"
+              else
+                echo "  erofs failed — trying debugfs..."
+                # Try to rdump the overlay folder directly
+                for SRC_PATH in "overlay" "product/overlay"; do
+                  if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
+                    mkdir -p "product_extracted/overlay"
+                    debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
+                    echo "  ✅ overlay folder extracted via debugfs from /$SRC_PATH"
+                    break
+                  fi
+                done
+              fi
+
+              # Search for the APK under all likely paths
+              for BASE in \
+                "product_extracted/overlay" \
+                "product_extracted/product/overlay" \
+                "product_extracted/system/product/overlay"; do
+                APK_SRC=$(find "$BASE" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+                if [ -n "$APK_SRC" ]; then
+                  cp "$APK_SRC" "output/$(basename "$APK_SRC")"
+                  echo "  ✅ $(basename "$APK_SRC") copied from $BASE"
+                  RRO_FOUND=true
+                  break
+                fi
+              done
+
+              $RRO_FOUND || echo "  ⚠️ framework-res RRO APK not found in product.img"
+              rm -rf product_extracted
+            fi
+          else
+            echo ""; echo "[5/7] Skipping product.img (not requested)"
+          fi
+
+          # ── system.img extraction ────────────────────────────────────────────
           if [ -z "$TARGETS" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
-            echo "  No system targets — skipping system extraction"
+            echo ""; echo "[6/7] No system targets — skipping system extraction"
           else
             [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
-            echo "✅ Found: $SYSTEM_IMG"
-
-            echo ""; echo "[5/6] Extracting system.img contents..."
+            echo ""; echo "[6/7] Extracting system.img contents..."
+            echo "  Found: $SYSTEM_IMG"
             mkdir -p system_extracted
 
             SINGLE_FILES="build.prop floating_features.xml"
@@ -196,7 +260,6 @@ jobs:
               echo "✅ Extracted via erofs"
             else
               echo "  erofs failed — trying ext4 via debugfs..."
-              # Build combined extraction list (regular targets + wallpaper-res folder if needed)
               DEBUGFS_TARGETS="$TARGETS"
               [ "$WANT_WALLPAPER_RES" = "true" ] && DEBUGFS_TARGETS="$DEBUGFS_TARGETS priv-app/wallpaper-res"
 
@@ -238,8 +301,7 @@ jobs:
             echo "Top level contents:"
             ls system_extracted/ || true
 
-            echo ""; echo "[6/6] Copying selected targets..."
-            mkdir -p output
+            echo ""; echo "[7/7] Copying selected targets..."
 
             # Handle wallpaper-res.apk specifically
             if [ "$WANT_WALLPAPER_RES" = "true" ]; then
@@ -281,10 +343,12 @@ jobs:
               done
               [ ! -e "output/$TARGET" ] && echo "  ⚠️ Not found: $TARGET"
             done
+
+            sudo umount system_extracted/ 2>/dev/null || true
+            rm -rf system_extracted
           fi
 
-          sudo umount system_extracted/ 2>/dev/null || true
-          rm -rf system_extracted super_dump super.img super.raw.img system_unsparse.img
+          rm -rf super_dump super.img super.raw.img system_unsparse.img product_raw.img product_unsparse.img
 
           FILE_COUNT=$(ls output | wc -l)
           [ "$FILE_COUNT" -eq 0 ] && { echo "❌ Nothing extracted!"; exit 1; }
