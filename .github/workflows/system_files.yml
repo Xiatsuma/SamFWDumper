@@ -57,6 +57,10 @@ on:
         description: 'build.prop (Device properties)'
         type: boolean
         default: false
+      extract_wallpaper_res:
+        description: 'wallpaper-res.apk (Wallpaper resources APK from priv-app)'
+        type: boolean
+        default: false
 
 jobs:
   extract:
@@ -96,15 +100,17 @@ jobs:
           TARGETS="${TARGETS# }"
 
           WANT_SUPER_CONFIG="${{ github.event.inputs.extract_super_config }}"
+          WANT_WALLPAPER_RES="${{ github.event.inputs.extract_wallpaper_res }}"
 
           # At least one must be selected
-          if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ]; then
+          if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
             echo "❌ No targets selected!"
             exit 1
           fi
 
           echo "Targets: $TARGETS"
           echo "Super config: $WANT_SUPER_CONFIG"
+          echo "Wallpaper-res APK: $WANT_WALLPAPER_RES"
 
           echo ""; echo "[1/6] Downloading firmware..."
           wget --no-check-certificate -O "firmware.zip" "${{ github.event.inputs.url }}" 2>&1 | tail -3
@@ -148,11 +154,9 @@ jobs:
                 cp -r "super_dump/config" "output/super_config"
                 echo "✅ super config saved from super_dump/config"
               else
-                # lpunpack on some versions outputs config files directly
                 mkdir -p "output/super_config"
                 find super_dump -maxdepth 1 -name "*.cfg" -o -name "*_partition*" -o -name "misc_info*" | \
                   xargs -I{} cp {} "output/super_config/" 2>/dev/null
-                # Also save lpunpack metadata via lpdump
                 bin/lp/lpdump "$SUPER_FILE" > "output/super_config/lpdump.txt" 2>/dev/null || true
                 echo "✅ super config saved via lpdump"
               fi
@@ -176,8 +180,8 @@ jobs:
             fi
           fi
 
-          # If only super config was requested and no system targets, skip system extraction
-          if [ -z "$TARGETS" ]; then
+          # If only super config was requested and no system targets or wallpaper-res, skip system extraction
+          if [ -z "$TARGETS" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
             echo "  No system targets — skipping system extraction"
           else
             [ -z "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
@@ -192,7 +196,11 @@ jobs:
               echo "✅ Extracted via erofs"
             else
               echo "  erofs failed — trying ext4 via debugfs..."
-              for TARGET in $TARGETS; do
+              # Build combined extraction list (regular targets + wallpaper-res folder if needed)
+              DEBUGFS_TARGETS="$TARGETS"
+              [ "$WANT_WALLPAPER_RES" = "true" ] && DEBUGFS_TARGETS="$DEBUGFS_TARGETS priv-app/wallpaper-res"
+
+              for TARGET in $DEBUGFS_TARGETS; do
                 echo "  Extracting $TARGET via debugfs..."
                 IS_FILE=false
                 for SF in $SINGLE_FILES; do
@@ -211,10 +219,11 @@ jobs:
                   $FOUND || echo "  ⚠️ $TARGET not found in image"
                 else
                   FOUND=false
+                  DEST_DIR="system_extracted/$TARGET"
+                  mkdir -p "$DEST_DIR"
                   for SRC_PATH in "$TARGET" "system/$TARGET"; do
                     if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
-                      mkdir -p "system_extracted/$TARGET"
-                      debugfs -R "rdump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
+                      debugfs -R "rdump $SRC_PATH $DEST_DIR" "$SYSTEM_IMG" 2>/dev/null
                       FOUND=true
                       echo "  ✅ $TARGET found at /$SRC_PATH"
                       break
@@ -231,6 +240,27 @@ jobs:
 
             echo ""; echo "[6/6] Copying selected targets..."
             mkdir -p output
+
+            # Handle wallpaper-res.apk specifically
+            if [ "$WANT_WALLPAPER_RES" = "true" ]; then
+              APK_FOUND=false
+              for BASE in \
+                "system_extracted/priv-app/wallpaper-res" \
+                "system_extracted/system/priv-app/wallpaper-res" \
+                "system_extracted/system_a/priv-app/wallpaper-res" \
+                "system_extracted/system/system/priv-app/wallpaper-res" \
+                "system_extracted/system_a/system/priv-app/wallpaper-res"; do
+                APK_SRC="$BASE/wallpaper-res.apk"
+                if [ -f "$APK_SRC" ]; then
+                  cp "$APK_SRC" "output/wallpaper-res.apk"
+                  echo "  ✅ wallpaper-res.apk (from $BASE)"
+                  APK_FOUND=true
+                  break
+                fi
+              done
+              $APK_FOUND || echo "  ⚠️ wallpaper-res.apk not found"
+            fi
+
             for TARGET in $TARGETS; do
               if [ -e "system_extracted/$TARGET" ]; then
                 cp -r "system_extracted/$TARGET" "output/"
