@@ -61,6 +61,10 @@ on:
         description: 'wallpaper-res.apk (Wallpaper resources APK from priv-app)'
         type: boolean
         default: false
+      extract_saiv:
+        description: 'saiv (Samsung AI Vision folder from system)'
+        type: boolean
+        default: false
       extract_framework_rro:
         description: 'framework-res RRO APK (from product/overlay)'
         type: boolean
@@ -100,6 +104,7 @@ jobs:
           ${{ github.event.inputs.extract_media }} && TARGETS="$TARGETS media"
           ${{ github.event.inputs.extract_cameradata }} && TARGETS="$TARGETS cameradata"
           ${{ github.event.inputs.extract_build_prop }} && TARGETS="$TARGETS build.prop"
+          ${{ github.event.inputs.extract_saiv }} && TARGETS="$TARGETS saiv"
 
           TARGETS="${TARGETS# }"
 
@@ -213,7 +218,6 @@ jobs:
                 echo "  ✅ product.img extracted via erofs"
               else
                 echo "  erofs failed — trying debugfs..."
-                # Try to rdump the overlay folder directly
                 for SRC_PATH in "overlay" "product/overlay"; do
                   if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
                     mkdir -p "product_extracted/overlay"
@@ -224,7 +228,6 @@ jobs:
                 done
               fi
 
-              # Search for the APK under all likely paths
               for BASE in \
                 "product_extracted/overlay" \
                 "product_extracted/product/overlay" \
