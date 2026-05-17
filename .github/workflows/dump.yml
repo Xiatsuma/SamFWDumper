@@ -1,0 +1,231 @@
+# =============================================================================
+# SamFWDumper - Automated Samsung Firmware Extraction
+# Copyright (C) 2026 Xiatsuma
+# Licensed under PolyForm Noncommercial License 1.0.0
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+#
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
+# =============================================================================
+
+name: Images Extractor
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'SamFW Direct Download Link'
+        required: true
+      compression:
+        description: 'Compression level'
+        required: true
+        default: '0'
+        type: choice
+        options:
+        - '0'
+        - '3'
+        - '6'
+        - '9'
+      upload_destination:
+        description: 'Upload destination'
+        required: true
+        default: 'gofile'
+        type: choice
+        options:
+        - 'gofile'
+        - 'github releases'
+      extract_system:
+        description: 'system.img'
+        type: boolean
+        default: false
+      extract_system_ext:
+        description: 'system_ext.img'
+        type: boolean
+        default: false
+      extract_product:
+        description: 'product.img'
+        type: boolean
+        default: false
+      extract_vendor:
+        description: 'vendor.img'
+        type: boolean
+        default: false
+      extract_vendor_boot:
+        description: 'vendor_boot.img'
+        type: boolean
+        default: false
+      extract_vendor_dlkm:
+        description: 'vendor_dlkm.img'
+        type: boolean
+        default: false
+      extract_system_dlkm:
+        description: 'system_dlkm.img'
+        type: boolean
+        default: false
+      extract_odm:
+        description: 'odm.img'
+        type: boolean
+        default: false
+      extract_odm_dlkm:
+        description: 'odm_dlkm.img'
+        type: boolean
+        default: false
+      extract_boot:
+        description: 'boot.img'
+        type: boolean
+        default: false
+      extract_init_boot:
+        description: 'init_boot.img'
+        type: boolean
+        default: false
+      extract_vbmeta:
+        description: 'vbmeta.img'
+        type: boolean
+        default: false
+      extract_vbmeta_system:
+        description: 'vbmeta_system.img'
+        type: boolean
+        default: false
+      extract_dtbo:
+        description: 'dtbo.img'
+        type: boolean
+        default: false
+      extract_recovery:
+        description: 'recovery.img'
+        type: boolean
+        default: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            jq \
+            xz-utils \
+            lz4 \
+            unzip \
+            curl \
+            binutils \
+            android-sdk-libsparse-utils
+
+      - name: Make tools executable
+        run: chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* upload_gofile.sh scripts/dump.sh
+
+      - name: Get AP Info
+        id: apinfo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sL --range 0-2097151 "${{ github.event.inputs.url }}" > /tmp/fw_peek.bin
+          AP_FILE=$(strings /tmp/fw_peek.bin | grep -oP 'AP_\w+\.(tar\.md5|tar)' | head -1)
+          rm -f /tmp/fw_peek.bin
+          AP_SEGMENT=$(echo "$AP_FILE" | cut -d'_' -f2)
+          RELEASE_DATE=$(date +"%-d-%-m-%Y %-I:%M %p")
+          BASE_TAG=$(date +"%d%m%Y_%H,%M,%S")
+          RELEASE_TAG="$BASE_TAG"
+          if gh release view "$RELEASE_TAG" &>/dev/null 2>&1; then
+            SUFFIX=1
+            while gh release view "${BASE_TAG}_${SUFFIX}" &>/dev/null 2>&1; do
+              SUFFIX=$((SUFFIX + 1))
+            done
+            RELEASE_TAG="${BASE_TAG}_${SUFFIX}"
+          fi
+          echo "ap_segment=$AP_SEGMENT" >> $GITHUB_OUTPUT
+          echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Run Dump Script
+        run: |
+          # Build partition list from checkboxes
+          PARTITIONS=""
+          ${{ github.event.inputs.extract_system }} && PARTITIONS="$PARTITIONS system"
+          ${{ github.event.inputs.extract_system_ext }} && PARTITIONS="$PARTITIONS system_ext"
+          ${{ github.event.inputs.extract_product }} && PARTITIONS="$PARTITIONS product"
+          ${{ github.event.inputs.extract_vendor }} && PARTITIONS="$PARTITIONS vendor"
+          ${{ github.event.inputs.extract_vendor_boot }} && PARTITIONS="$PARTITIONS vendor_boot"
+          ${{ github.event.inputs.extract_vendor_dlkm }} && PARTITIONS="$PARTITIONS vendor_dlkm"
+          ${{ github.event.inputs.extract_system_dlkm }} && PARTITIONS="$PARTITIONS system_dlkm"
+          ${{ github.event.inputs.extract_odm }} && PARTITIONS="$PARTITIONS odm"
+          ${{ github.event.inputs.extract_odm_dlkm }} && PARTITIONS="$PARTITIONS odm_dlkm"
+          ${{ github.event.inputs.extract_boot }} && PARTITIONS="$PARTITIONS boot"
+          ${{ github.event.inputs.extract_init_boot }} && PARTITIONS="$PARTITIONS init_boot"
+          ${{ github.event.inputs.extract_vbmeta }} && PARTITIONS="$PARTITIONS vbmeta"
+          ${{ github.event.inputs.extract_vbmeta_system }} && PARTITIONS="$PARTITIONS vbmeta_system"
+          ${{ github.event.inputs.extract_dtbo }} && PARTITIONS="$PARTITIONS dtbo"
+          ${{ github.event.inputs.extract_recovery }} && PARTITIONS="$PARTITIONS recovery"
+          
+          # Remove leading space
+          PARTITIONS="${PARTITIONS# }"
+          
+          if [ -z "$PARTITIONS" ]; then
+            echo "❌ No partitions selected! Please check at least one box."
+            exit 1
+          fi
+          
+          # Run script
+          bash scripts/dump.sh \
+            "${{ github.event.inputs.url }}" \
+            "${{ github.event.inputs.compression }}" \
+            "$PARTITIONS"
+
+      - name: Upload to GoFile
+        if: ${{ github.event.inputs.upload_destination == 'gofile' }}
+        run: |
+          if [ -d "processed" ] && [ "$(ls -A processed)" ]; then
+            cd processed
+            zip -r ../firmware-dump.zip .
+            cd ..
+            bash upload_gofile.sh firmware-dump.zip
+          else
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+      - name: Upload to GitHub Releases
+        if: ${{ github.event.inputs.upload_destination == 'github releases' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -d "processed" ] || [ -z "$(ls -A processed)" ]; then
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+          NOTES_FILE=$(mktemp)
+          ASSETS=()
+          SIZE_LIMIT=2147483648
+
+          for FILE in processed/*; do
+            [ -f "$FILE" ] || continue
+            FILESIZE=$(stat -c%s "$FILE")
+            BASENAME=$(basename "$FILE")
+            PART_NAME=$(echo "$BASENAME" | sed 's/\.img.*//')
+
+            if [ "$FILESIZE" -gt "$SIZE_LIMIT" ]; then
+              if bash upload_gofile.sh "$FILE"; then
+                GOFILE_URL=$(cat download_url.txt)
+                echo "${PART_NAME}: ${GOFILE_URL}" >> "$NOTES_FILE"
+              else
+                echo "${PART_NAME}: ❌ GoFile upload failed" >> "$NOTES_FILE"
+              fi
+            else
+              ASSETS+=("$FILE")
+            fi
+          done
+
+          gh release create "${{ steps.apinfo.outputs.release_tag }}" \
+            --title "${{ steps.apinfo.outputs.ap_segment }} | ${{ steps.apinfo.outputs.release_date }}" \
+            --notes-file "$NOTES_FILE" \
+            "${ASSETS[@]}"
+
+          rm -f "$NOTES_FILE"
+          

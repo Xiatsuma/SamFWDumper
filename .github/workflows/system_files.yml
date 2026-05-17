@@ -1,0 +1,221 @@
+# =============================================================================
+# SamFWDumper - Automated Samsung Firmware Extraction
+# Copyright (C) 2026 Xiatsuma
+# Licensed under PolyForm Noncommercial License 1.0.0
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+#
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
+# =============================================================================
+
+name: System Files Extractor
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'SamFW Direct Download Link'
+        required: true
+      compression:
+        description: 'Compression level'
+        required: true
+        default: '0'
+        type: choice
+        options:
+        - '0'
+        - '3'
+        - '6'
+        - '9'
+      upload_destination:
+        description: 'Upload destination'
+        required: true
+        default: 'gofile'
+        type: choice
+        options:
+        - 'gofile'
+        - 'github releases'
+      extract_app:
+        description: 'app (Preinstalled APKs)'
+        type: boolean
+        default: false
+      extract_bin:
+        description: 'bin (System binaries)'
+        type: boolean
+        default: false
+      extract_cameradata:
+        description: 'cameradata (Camera tuning)'
+        type: boolean
+        default: false
+      extract_etc:
+        description: 'etc (Configs & permissions)'
+        type: boolean
+        default: false
+      extract_lib:
+        description: 'lib (32-bit libraries)'
+        type: boolean
+        default: false
+      extract_lib64:
+        description: 'lib64 (64-bit libraries)'
+        type: boolean
+        default: false
+      extract_media:
+        description: 'media (Sounds, fonts, bootanimation)'
+        type: boolean
+        default: false
+      extract_priv_app:
+        description: 'priv-app (Privileged APKs)'
+        type: boolean
+        default: false
+      extract_saiv:
+        description: 'saiv (Samsung AI Vision folder from system)'
+        type: boolean
+        default: false
+      extract_config:
+        description: 'config (XML feature & permission configs)'
+        type: boolean
+        default: false
+      extract_super_config:
+        description: 'super config (Repack metadata for super.img)'
+        type: boolean
+        default: false
+      extract_build_prop:
+        description: 'build.prop (Device properties)'
+        type: boolean
+        default: false
+      extract_framework_rro:
+        description: 'framework-res RRO APK (from product/overlay)'
+        type: boolean
+        default: false
+      extract_pit:
+        description: 'PIT file (Partition Information Table from CSC)'
+        type: boolean
+        default: false
+      extract_wallpaper_res:
+        description: 'wallpaper-res.apk (Wallpaper resources APK from priv-app)'
+        type: boolean
+        default: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            jq \
+            xz-utils \
+            lz4 \
+            unzip \
+            curl \
+            android-sdk-libsparse-utils \
+            e2fsprogs
+
+      - name: Make tools executable
+        run: chmod +x bin/lp/* bin/ext4/* bin/erofs-utils/* bin/py_scripts/* upload_gofile.sh scripts/system_files.sh
+
+      - name: Get AP Info
+        id: apinfo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sL --range 0-2097151 "${{ github.event.inputs.url }}" > /tmp/fw_peek.bin
+          AP_FILE=$(strings /tmp/fw_peek.bin | grep -oP 'AP_\w+\.(tar\.md5|tar)' | head -1)
+          rm -f /tmp/fw_peek.bin
+          AP_SEGMENT=$(echo "$AP_FILE" | cut -d'_' -f2)
+          RELEASE_DATE=$(date +"%-d-%-m-%Y %-I:%M %p")
+          BASE_TAG=$(date +"%d%m%Y_%H,%M,%S")
+          RELEASE_TAG="$BASE_TAG"
+          if gh release view "$RELEASE_TAG" &>/dev/null 2>&1; then
+            SUFFIX=1
+            while gh release view "${BASE_TAG}_${SUFFIX}" &>/dev/null 2>&1; do
+              SUFFIX=$((SUFFIX + 1))
+            done
+            RELEASE_TAG="${BASE_TAG}_${SUFFIX}"
+          fi
+          echo "ap_segment=$AP_SEGMENT" >> $GITHUB_OUTPUT
+          echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Run System Files Extraction
+        run: |
+          bash scripts/system_files.sh \
+            "${{ github.event.inputs.url }}" \
+            "${{ github.event.inputs.compression }}" \
+            "${{ github.event.inputs.extract_app }}" \
+            "${{ github.event.inputs.extract_bin }}" \
+            "${{ github.event.inputs.extract_cameradata }}" \
+            "${{ github.event.inputs.extract_etc }}" \
+            "${{ github.event.inputs.extract_lib }}" \
+            "${{ github.event.inputs.extract_lib64 }}" \
+            "${{ github.event.inputs.extract_media }}" \
+            "${{ github.event.inputs.extract_priv_app }}" \
+            "${{ github.event.inputs.extract_saiv }}" \
+            "${{ github.event.inputs.extract_config }}" \
+            "${{ github.event.inputs.extract_super_config }}" \
+            "${{ github.event.inputs.extract_build_prop }}" \
+            "${{ github.event.inputs.extract_framework_rro }}" \
+            "${{ github.event.inputs.extract_pit }}" \
+            "${{ github.event.inputs.extract_wallpaper_res }}"
+
+      - name: Upload to GoFile
+        if: ${{ github.event.inputs.upload_destination == 'gofile' }}
+        run: |
+          if [ -d "output" ] && [ "$(ls -A output)" ]; then
+            cd output
+            zip -r ../system-files.zip .
+            cd ..
+            bash upload_gofile.sh system-files.zip
+          else
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+      - name: Upload to GitHub Releases
+        if: ${{ github.event.inputs.upload_destination == 'github releases' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -d "output" ] || [ -z "$(ls -A output)" ]; then
+            echo "❌ No files to upload"
+            exit 1
+          fi
+
+          NOTES_FILE=$(mktemp)
+          ASSETS=()
+          SIZE_LIMIT=2147483648
+
+          for FILE in output/*; do
+            [ -e "$FILE" ] || continue
+            if [ -d "$FILE" ]; then
+              FILESIZE=$(du -sb "$FILE" | cut -f1)
+            else
+              FILESIZE=$(stat -c%s "$FILE")
+            fi
+            BASENAME=$(basename "$FILE")
+
+            if [ "$FILESIZE" -gt "$SIZE_LIMIT" ]; then
+              if bash upload_gofile.sh "$FILE"; then
+                GOFILE_URL=$(cat download_url.txt)
+                echo "${BASENAME}: ${GOFILE_URL}" >> "$NOTES_FILE"
+              else
+                echo "${BASENAME}: ❌ GoFile upload failed" >> "$NOTES_FILE"
+              fi
+            else
+              ASSETS+=("$FILE")
+            fi
+          done
+
+          gh release create "${{ steps.apinfo.outputs.release_tag }}" \
+            --title "${{ steps.apinfo.outputs.ap_segment }} | ${{ steps.apinfo.outputs.release_date }}" \
+            --notes-file "$NOTES_FILE" \
+            "${ASSETS[@]}"
+
+          rm -f "$NOTES_FILE"
+          
